@@ -22,7 +22,8 @@ print()
 
 
 print(Style.BRIGHT + Fore.GREEN + "Filtering Bacteria Only..." + Style.RESET_ALL)
-refseq = refseq[refseq["group"] == "bacteria"]
+refseq = refseq[(refseq["group"] == "bacteria") & (refseq["version_status"] == "latest") & (refseq["assembly_level"] == "Complete Genome")]
+refseq = refseq.loc[refseq.groupby(['species_taxid', 'infraspecific_name'])['seq_rel_date'].idxmax()]
 #refseq = refseq.head()
 print(refseq.head())
 print()
@@ -34,6 +35,6 @@ print()
 
 print(Style.BRIGHT + Fore.GREEN + f"Saving to {args.outPath}..." + Style.RESET_ALL)
 
-taxa_db.to_csv(args.outPath, sep = "\t", index = False, mode = "a")
+taxa_db.to_csv(args.outPath, sep = "\t", index = False, mode = "w", float_format='%.0f')
 
 print(Style.BRIGHT + Fore.GREEN + "Done!" + Style.RESET_ALL)
