@@ -23,7 +23,8 @@ def download_url(url: str, out_path: Path, retries: int = 3, wait: float = 1.0) 
     
     return 1
 
-def download_relatives(lineages: pd.DataFrame, tax_id: int, buckets_dir: Path, strain: str = '', sample_dist: dict = {'species': 10, 'genus': 10, 'family': 10}, bucket_names: dict =  {'species': '', 'genus': '', 'family': ''},exclusive: bool = True) -> None:
+def download_relatives(lineages: pd.DataFrame, tax_id: int, buckets_dir: Path, strain: str = '', sample_dist: dict = {'species': 10, 'genus': 10, 'family': 10}, bucket_names: dict =  {'species': '', 'genus': '', 'family': ''},exclusive: bool = True, organism_only: bool = False, organism_skip: bool = False) -> None:
+    
     organism = lineages[(lineages['tax_id'] == tax_id) & (lineages['strain'] == strain)].iloc[0].to_dict()
     
     if exclusive:
@@ -45,8 +46,12 @@ def download_relatives(lineages: pd.DataFrame, tax_id: int, buckets_dir: Path, s
     family_matches = family_matches.head(sample_dist['family'])
     
     # Download Organism    
-    organism_path = buckets_dir / f"TARGET_{organism['species']}_{organism['strain']}.faa.gz"
-    download_url(organism['ftp_path'], organism_path)
+    if not organism_skip:
+        organism_path = buckets_dir / f"TARGET_{organism['species']}_{organism['strain']}.faa.gz"
+        download_url(organism['ftp_path'], organism_path)
+    
+    if organism_only:
+        return
     
     # Download Species
     species_path = buckets_dir / (f"SPECIES_{organism['species']}" if bucket_names['species'] == '' else bucket_names['species'])
@@ -71,10 +76,16 @@ if __name__ == "__main__":
     parser.add_argument("bucketsPath")
     parser.add_argument("--strain", default = '', type = str)
     parser.add_argument("-e", '--exclusive', action = "store_true")
+    parser.add_argument("-c", '--complete', action = "store_true")
     args = parser.parse_args()
     
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_colwidth', None)
     
     lineages = pd.read_csv(args.lineagePath, sep = "\t", header=0, low_memory=False)
-    download_relatives(lineages, int(args.taxId), Path(args.bucketsPath), strain = args.strain, exclusive=args.exclusive)
+    if args.complete:
+        download_relatives(lineages, int(args.taxId), Path(args.bucketsPath), strain = args.strain, exclusive=False, organism_only=True)
+        download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T1', strain = args.strain, exclusive=False, organism_skip=True)   
+        download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T2', strain = args.strain, exclusive=True, organism_skip=True)
+    else:
+        download_relatives(lineages, int(args.taxId), Path(args.bucketsPath), strain = args.strain, exclusive=args.exclusive)
