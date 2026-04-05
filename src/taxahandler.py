@@ -1,4 +1,5 @@
 import argparse
+import json
 
 from pathlib import Path
 import pandas as pd
@@ -6,6 +7,7 @@ from ete3 import NCBITaxa
 from tqdm import tqdm
 from colorama import Fore, Back, Style
 import numpy as np
+from Bio import Entrez
 
 def gen_taxa_db(target: pd.DataFrame) -> pd.DataFrame:
     ncbi = NCBITaxa()
@@ -68,6 +70,15 @@ def graph(lineages: pd.DataFrame, outfile: Path):
                 node.name = names[int(node.name)]
     
     tree.write(outfile=str(outfile))
+    
+def accession2taxid(acc: str, db="protein") -> str:
+    handle = Entrez.esearch(db=db, term=acc)
+    record = Entrez.read(handle)
+    gi = record["IdList"][0]
+    handle = Entrez.esummary(db=db, id=gi, retmode="json")
+    result = json.load(handle)["result"]
+    taxid = result[gi]["taxid"]
+    return str(taxid)
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
