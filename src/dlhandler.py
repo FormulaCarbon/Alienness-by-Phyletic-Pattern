@@ -35,20 +35,24 @@ def download_relatives(lineages: pd.DataFrame, tax_id: int, buckets_dir: Path, s
     if exclusive:
         species_matches = lineages[(lineages['tax_id'] == tax_id) & (lineages['strain'] != strain)]
     else:
-        species_matches = lineages[(lineages['tax_id'] == tax_id)]    
-    species_matches = species_matches.head(sample_dist['species'])
+        species_matches = lineages[(lineages['tax_id'] == tax_id)]
+    
+    if sample_dist['species'] != 0:
+        species_matches = species_matches.head(sample_dist['species'])
         
     if exclusive:
         genus_matches = lineages[(lineages['genus_id'] == organism['genus_id']) & (lineages['species_id'] != organism['species_id'])]
     else:
         genus_matches = lineages[(lineages['genus_id'] == organism['genus_id'])]
-    genus_matches = genus_matches.head(sample_dist['genus'])
+    if sample_dist['genus'] != 0:
+        genus_matches = genus_matches.head(sample_dist['genus'])
         
     if exclusive:
         family_matches = lineages[(lineages['family_id'] == organism['family_id']) & (lineages['genus_id'] != organism['genus_id'])]
     else:
         family_matches = lineages[(lineages['family_id'] == organism['family_id'])]
-    family_matches = family_matches.head(sample_dist['family'])
+    if sample_dist['family'] != 0:
+        family_matches = family_matches.head(sample_dist['family'])
     
     # Download Organism    
     if not organism_skip:
@@ -150,6 +154,9 @@ if __name__ == "__main__":
     parser.add_argument("lineagePath")
     parser.add_argument("bucketsPath")
     parser.add_argument("--strain", default = '', type = str)
+    parser.add_argument("--familydist", default = 10, type = int)
+    parser.add_argument("--genusdist", default = 10, type = int)
+    parser.add_argument("--speciesdist", default = 10, type = int)
     parser.add_argument("-e", '--exclusive', action = "store_true")
     parser.add_argument("-c", '--complete', action = "store_true")
     args = parser.parse_args()
@@ -161,11 +168,11 @@ if __name__ == "__main__":
     if args.complete:
         organism_path, _, _, _ =download_relatives(lineages, int(args.taxId), Path(args.bucketsPath), strain = args.strain, exclusive=False, organism_only=True)
         unzip_fastas(organism_path)
-        _, t1_spec, t1_gen, t1_fam = download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T1', strain = args.strain, exclusive=False, organism_skip=True)  
+        _, t1_spec, t1_gen, t1_fam = download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T1', strain = args.strain, exclusive=False, organism_skip=True, sample_dist={'species': args.speciesdist, 'genus': args.genusdist, 'family': args.familydist})  
         unzip_fastas(t1_spec) 
         unzip_fastas(t1_gen) 
         unzip_fastas(t1_fam) 
-        _, t2_spec, t2_gen, t2_fam = download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T2', strain = args.strain, exclusive=True, organism_skip=True)
+        _, t2_spec, t2_gen, t2_fam = download_relatives(lineages, int(args.taxId), Path(args.bucketsPath) / 'T2', strain = args.strain, exclusive=True, organism_skip=True, sample_dist={'species': args.speciesdist, 'genus': args.genusdist, 'family': args.familydist})
         unzip_fastas(t2_spec) 
         unzip_fastas(t2_gen) 
         unzip_fastas(t2_fam) 

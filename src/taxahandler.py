@@ -9,6 +9,8 @@ from colorama import Fore, Back, Style
 import numpy as np
 from Bio import Entrez
 
+Entrez.email = 'siddharth.kakumanu@gmail.com'
+
 def gen_taxa_db(target: pd.DataFrame) -> pd.DataFrame:
     ncbi = NCBITaxa()
     
@@ -71,10 +73,10 @@ def graph(lineages: pd.DataFrame, outfile: Path):
     
     tree.write(outfile=str(outfile))
     
-def accession2taxid(acc: str, db="protein") -> str:
+def accession2taxid(acc: str, db="nucleotide") -> str:
     handle = Entrez.esearch(db=db, term=acc)
     record = Entrez.read(handle)
-    gi = record["IdList"][0]
+    gi = record["IdList"][0] # type: ignore
     handle = Entrez.esummary(db=db, id=gi, retmode="json")
     result = json.load(handle)["result"]
     taxid = result[gi]["taxid"]
