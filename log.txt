@@ -1,0 +1,8 @@
+single positional indexer is out-of-bounds
+single positional indexer is out-of-bounds
+[WinError 145] The directory is not empty: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_041504385.1'
+[WinError 145] The directory is not empty: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_041504445.1'
+[WinError 145] The directory is not empty: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_041505265.1'
+[WinError 145] The directory is not empty: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_041505935.1'
+[WinError 145] The directory is not empty: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_041927215.1'
+[WinError 3] The system cannot find the path specified: 'H:\\GENOME_DB\\GENOMES\\ncbi_dataset\\data\\GCF_044336395.1\\GCF_044336395.1_ASM4433639v1_genomic.fna' -> 'H:\\GENOME_DB\\GENOMES\\Eubacteriales\\Clostridiaceae\\Clostridium\\Clostridium sp. 10cd \\GCF_044336395.1_ASM4433639v1_genomic.fna'

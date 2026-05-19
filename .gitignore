@@ -10,4 +10,7 @@ merged.tab
 /src/buckets
 /src/ref
 /src/graphs
+venv
+.env
+datasets.exe
 

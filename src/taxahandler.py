@@ -1,22 +1,27 @@
 import argparse
 import json
+import os
 
 from pathlib import Path
 import pandas as pd
 from ete3 import NCBITaxa
 from tqdm import tqdm
-from colorama import Fore, Back, Style
 import numpy as np
 from Bio import Entrez
+from dotenv import load_dotenv
 
-Entrez.email = 'siddharth.kakumanu@gmail.com'
+from iohandler import header, error
+
+load_dotenv()
+
+Entrez.email = os.getenv('EMAIL')
 
 def gen_taxa_db(target: pd.DataFrame, update_db = False) -> pd.DataFrame:
     ncbi = NCBITaxa()
     if update_db:
         ncbi.update_taxonomy_database()
     
-    print("Cleaning Data")
+    header("Cleaning Data")
     clean = target.dropna(subset = ["assembly_accession", "ftp_path", "species_taxid"])
     
     taxIDs = clean["species_taxid"].astype(int).tolist()

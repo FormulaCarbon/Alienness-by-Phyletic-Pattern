@@ -1,6 +1,8 @@
 from dlhandler import *
+from genomehandler import run_diamond, compute_pdt
 
 import argparse
+import pandas as pd
 
 parser = argparse.ArgumentParser()
 
