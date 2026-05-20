@@ -1,32 +1,124 @@
-from dlhandler import *
-from genomehandler import run_diamond, compute_pdt
-
-import argparse
+from pathlib import Path
 import pandas as pd
+import yaml
+import argparse
+from tqdm import tqdm
+
+from genomehandler import create_raw_multifasta, create_diamond_db, run_diamond, compute_pdt, find_hgt
+from dlhandler import download_url, unzip_fastas
 
 parser = argparse.ArgumentParser()
-
-parser.add_argument("queryPath")
-parser.add_argument("dbPath")
-parser.add_argument("outPath")
-parser.add_argument("--threads", type=int, default=4, help="Number of threads for DIAMOND")
-parser.add_argument("--total_genomes", type=int, default=None, help="Total genomes in the DB for PDT calculation")
-parser.add_argument("--identity", type=float, default=50.0, help="Minimum percent identity")
-
+parser.add_argument("accession")
+parser.add_argument("db_path")
+parser.add_argument("--config", default="config.yaml")
+parser.add_argument("--blast_path", default="")
 args = parser.parse_args()
 
-queryPath = Path(args.queryPath)
-dbPath = Path(args.dbPath)
-outPath = Path(args.outPath)
+with open(args.config, 'r') as configf:
+    config = yaml.safe_load(configf)
+    configf.close()
+    
+db_path = Path(args.db_path)
 
-print(f"Running DIAMOND: {queryPath} vs {dbPath}")
-run_diamond(queryPath, dbPath, outPath, threads=args.threads)
+with open(db_path / "config.yaml", 'r') as db_conff:
+    db_config = yaml.safe_load(db_conff)
+    db_conff.close()
 
-print("Computing PDT...")
-pdt_dict = compute_pdt(outPath, args.identity, 0.7, args.total_genomes)
+lineage_path = db_path / db_config['lineage_path']
+genomes_dir = db_path / db_config['genomes_path']
+blast_dir = Path(args.blast_path)
 
-# save PDT to CSV
-pdt_df = pd.DataFrame(list(pdt_dict.items()), columns=["gene", "PDT"])
-pdt_csv = outPath.with_suffix(".pdt.csv")
-pdt_df.to_csv(pdt_csv, index=False)
-print(f"PDT saved to {pdt_csv}")
+lineages = pd.read_csv(lineage_path, sep = "\t")
+accession = args.accession
+query = lineages[lineages["accession"] == accession].iloc[0]
+url = '_'.join(query["ftp_path"].split('_')[:-1]) + "_translated_cds.faa.gz"
+
+print("Query FASTA: " + url)
+download_url(url, blast_dir / "query.faa.gz")
+unzip_fastas(blast_dir)
+
+# T1 Creation
+species_T1 = lineages[lineages['species_id'] == query['species_id']]
+genus_T1 = lineages[lineages["genus_id"] == query["genus_id"]]
+family_T1 = lineages[lineages["family_id"] == query["family_id"]]
+bucket_T1 = {
+    "species": species_T1["accession"].tolist(),
+    "genus": genus_T1["accession"].tolist(),
+    "family": family_T1["accession"].tolist()
+}
+
+print("creating multifastas")
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["species"]], blast_dir / "species_t1.fasta")
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["genus"]], blast_dir / "genus_t1.fasta")
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["family"]], blast_dir / "family_t1.fasta")
+
+# T2 Creation
+bucket_T2 = {}
+bucket_T2["species"] = species_T1[species_T1["accession"] != accession]["accession"].tolist()
+bucket_T2["genus"] = genus_T1[genus_T1["species_id"] != query['species_id']]["accession"].tolist()
+bucket_T2["family"] = family_T1[family_T1["genus_id"] != query["genus_id"]]["accession"].tolist()
+
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["species"]], blast_dir / "species_t2.fasta")
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["genus"]], blast_dir / "genus_t2.fasta")
+create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["family"]], blast_dir / "family_t2.fasta")
+
+
+# DIAMOND
+groups = {
+    "species_t1": bucket_T1["species"],
+    "genus_t1": bucket_T1["genus"],
+    "family_t1": bucket_T1["family"],
+    "species_t2": bucket_T2["species"],
+    "genus_t2": bucket_T2["genus"],
+    "family_t2": bucket_T2["family"]
+}
+
+for group, accessions in groups.items():
+    db_path = blast_dir / "diamond" / group
+    create_diamond_db(blast_dir / f"{group}.fasta", db_path)
+    query_path = blast_dir / "query.faa"
+    out_path = blast_dir / "outputs" / f"{group}_hits.tsv"
+    max_target = len(accessions)
+    
+    run_diamond(
+        query=query_path,
+        db=db_path,
+        out=out_path,
+        #threads=4,
+        max_target_seqs=max_target,
+        coverage_thresh=config["coverage_threshold"],
+        identity_thresh=config["identity_thresholds"][group.split("_")[0]]
+    )
+
+
+for group in list(groups):
+    print(f"Computing {group} PDTs")
+    hit_path = blast_dir / "outputs" / f"{group}_hits.tsv"
+    compute_pdt(hit_path, blast_dir / "outputs" / f"{group}_pdts.tsv")
+
+df_struct = []
+
+for group in list(groups):
+    df_struct.append((str(blast_dir / "outputs" / f"{group}_pdts.tsv"), f"PDT_{group}"))
+
+print("constructing PDT df")
+# Start with the first file
+df = pd.read_csv(df_struct[0][0], sep='\t', usecols=['qseqid', 'PDT'])
+df = df.rename(columns={'PDT': df_struct[0][1]})
+
+# Iteratively merge the other results
+for file, colname in df_struct[1:]:
+    temp = pd.read_csv(file, sep='\t', usecols=['qseqid', 'PDT'])
+    temp = temp.rename(columns={'PDT': colname})
+    df = pd.merge(df, temp, on='qseqid', how='outer')
+
+# Rename 'qseqid' to 'gene' if you wish
+df = df.rename(columns={'qseqid': 'gene'})
+
+print(df.head())
+
+
+for row in tqdm(df.itertuples(), total=len(df)):
+    df["type"] = find_hgt(row, config["pdt_cutoffs"])
+    
+df.to_csv(blast_dir / "results.tsv", sep="\t")

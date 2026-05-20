@@ -6,6 +6,7 @@ from datetime import date
 import urllib.request
 import os
 import shutil
+from dotenv import load_dotenv
 
 import pandas as pd
 from tqdm import tqdm
@@ -15,11 +16,15 @@ from dlhandler import download_dataset
 from iohandler import header, error
 from dbhelpers import *
 
+load_dotenv()
+
 REFSEQ_URL = "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt"
+NCBI_API_KEY = os.getenv('NCBI_API_KEY')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("dbPath")
 parser.add_argument("-u", "--updatedb", action="store_true")
+parser.add_argument("-m", "--max_workers", help="max workers for rehydration", default = 10)
 args = parser.parse_args()
 
 db_path = Path(args.dbPath)
@@ -70,16 +75,28 @@ if last_timestamp == date(1, 1, 1):
         f.write('\n'.join(accessions))
         f.close()
     
-    download_dataset(Path("temp/accessions.txt"), Path("temp/genomes.zip"), genomes_dir)
+    download_dataset(
+        Path("temp/accessions.txt"), 
+        Path("temp/genomes.zip"), 
+        genomes_dir, 
+        max_workers=int(args.max_workers),
+        api_key=NCBI_API_KEY
+    )
     
     fasta_dir = genomes_dir / "ncbi_dataset" / "data"
     file_count = sum(1 for x in fasta_dir.rglob('*') if x.is_file()) - 2
-    
-    
-    for file in fasta_dir.rglob("*"):
-        if file.is_file():
-            dest_path = genomes_dir / file.name
-            shutil.move(file, dest_path)
+    with open ("log.txt", 'w') as log:
+        for file in tqdm(fasta_dir.rglob("*"), total=file_count):
+            try:
+                if file.is_file():
+                    dest_path = genomes_dir / file.name
+                    if file.suffix == ".faa":
+                        dest_path = genomes_dir / (file.parent.name + file.suffix)
+                    shutil.move(file, dest_path)
+            except Exception as e:
+                log.write(str(e)+ "\n")
+        log.close()
+    shutil.rmtree(fasta_dir)
         
 elif new_timestamp > last_timestamp:
     if input("New RefSeq Found. Update Database? [y/n]: ") != "y":

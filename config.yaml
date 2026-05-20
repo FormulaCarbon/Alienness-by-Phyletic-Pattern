@@ -1,0 +1,17 @@
+identity_thresholds:
+  species: 60
+  genus: 50
+  family: 25
+
+coverage_threshold: 0.70
+
+pdt_cutoffs:
+  species:
+    low: 0.30
+    high: 0.80
+  genus:
+    low: 0.30
+    high: 0.70
+  family:
+    low: 0.30
+    high: 0.40
