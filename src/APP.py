@@ -3,6 +3,8 @@ import pandas as pd
 import yaml
 import argparse
 from tqdm import tqdm
+from Bio import SeqIO
+import re
 
 from genomehandler import create_raw_multifasta, create_diamond_db, run_diamond, compute_pdt, find_hgt
 from dlhandler import download_url, unzip_fastas
@@ -73,6 +75,7 @@ groups = {
     "family_t2": bucket_T2["family"]
 }
 
+
 for group, accessions in groups.items():
     db_path = blast_dir / "diamond" / group
     create_diamond_db(blast_dir / f"{group}.fasta", db_path)
@@ -111,6 +114,7 @@ for file, colname in df_struct[1:]:
     temp = pd.read_csv(file, sep='\t', usecols=['qseqid', 'PDT'])
     temp = temp.rename(columns={'PDT': colname})
     df = pd.merge(df, temp, on='qseqid', how='outer')
+df = df.fillna(0)
 
 # Rename 'qseqid' to 'gene' if you wish
 df = df.rename(columns={'qseqid': 'gene'})
@@ -118,7 +122,71 @@ df = df.rename(columns={'qseqid': 'gene'})
 print(df.head())
 
 
+types = []
 for row in tqdm(df.itertuples(), total=len(df)):
-    df["type"] = find_hgt(row, config["pdt_cutoffs"])
-    
-df.to_csv(blast_dir / "results.tsv", sep="\t")
+    types.append(find_hgt(row, config["pdt_cutoffs"]))
+df["type"] = types
+
+import re
+from Bio import SeqIO
+
+gene_coords = {}
+
+def parse_location(location_str):
+    strand = '-' if location_str.startswith('complement') else '+'
+    # Remove complement( and closing ), if present
+    loc = re.sub(r'^complement\((.*)\)$', r'\1', location_str)
+    # Find if fuzzy edges exist
+    start_fuzzy = loc.startswith('<')
+    end_fuzzy = '>' in loc.split('..')[1]
+    loc_nofuzzy = loc.replace('<', '').replace('>', '')
+    m = re.match(r'(\d+)\.\.(\d+)', loc_nofuzzy)
+    if not m:
+        return None
+    start, end = int(m.group(1)), int(m.group(2))
+    return start, end, strand, start_fuzzy, end_fuzzy
+
+for record in SeqIO.parse(blast_dir / "query.faa", "fasta"):
+    header = record.description
+    # Look for [location=...] or location=... anywhere in header
+    loc_match = re.search(r'location=([^\]\s]+)', header)
+    if loc_match:
+        result = parse_location(loc_match.group(1))
+        if result:
+            start, end, strand, start_fuzzy, end_fuzzy = result
+            gene_coords[record.id] = {
+                "start": start,
+                "end": end,
+                "strand": strand,
+                "start_fuzzy": start_fuzzy,
+                "end_fuzzy": end_fuzzy
+            }
+    else:
+        # Fallback: still try for any coordinates
+        match = re.search(r'(\d+)\.\.(\d+)', header)
+        if match:
+            start, end = map(int, match.groups())
+            gene_coords[record.id] = {
+                "start": start,
+                "end": end,
+                "strand": None,
+                "start_fuzzy": False,
+                "end_fuzzy": False
+            }
+
+gene_pos_df = pd.DataFrame([
+    {
+        "gene": k,
+        "start": v["start"],
+        "end": v["end"],
+        "strand": v["strand"],
+        "start_fuzzy": v["start_fuzzy"],
+        "end_fuzzy": v["end_fuzzy"]
+    }
+    for k, v in gene_coords.items()
+])
+
+# Merge into main table
+df = df.merge(gene_pos_df, on="gene", how="left")
+
+df.to_csv(blast_dir / "results.tsv", sep="\t", index=False)

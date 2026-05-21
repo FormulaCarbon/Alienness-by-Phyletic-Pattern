@@ -30,14 +30,6 @@ def create_diamond_db(infile: Path, outfile: Path):
         "--db",
         outfile
     ])
-    
-
-# ---------------------------
-# BLAST / DIAMOND interface
-# ---------------------------
-
-import subprocess
-from pathlib import Path
 
 def run_diamond(query: Path, db: Path, out: Path, threads: int = 4, max_target_seqs = None, coverage_thresh = None, identity_thresh = None):
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -56,11 +48,6 @@ def run_diamond(query: Path, db: Path, out: Path, threads: int = 4, max_target_s
     if identity_thresh is not None:
         cmd.extend(["--id", str(identity_thresh)])
     subprocess.run(cmd, check=True)
-
-
-# ---------------------------
-# Core PDT computation (NUMPY)
-# ---------------------------
 
 def compute_pdt(tsv: Path, out: Path):
     hits = pd.read_csv(tsv, sep='\t', header=None, usecols=[0,1], names=['qseqid', 'sseqid'])
