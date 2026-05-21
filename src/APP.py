@@ -50,9 +50,9 @@ bucket_T1 = {
 }
 
 print("creating multifastas")
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["species"]], blast_dir / "species_t1.fasta")
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["genus"]], blast_dir / "genus_t1.fasta")
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["family"]], blast_dir / "family_t1.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["species"]], blast_dir / "species_t1.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["genus"]], blast_dir / "genus_t1.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T1["family"]], blast_dir / "family_t1.fasta")
 
 # T2 Creation
 bucket_T2 = {}
@@ -60,9 +60,9 @@ bucket_T2["species"] = species_T1[species_T1["accession"] != accession]["accessi
 bucket_T2["genus"] = genus_T1[genus_T1["species_id"] != query['species_id']]["accession"].tolist()
 bucket_T2["family"] = family_T1[family_T1["genus_id"] != query["genus_id"]]["accession"].tolist()
 
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["species"]], blast_dir / "species_t2.fasta")
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["genus"]], blast_dir / "genus_t2.fasta")
-create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["family"]], blast_dir / "family_t2.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["species"]], blast_dir / "species_t2.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["genus"]], blast_dir / "genus_t2.fasta")
+#create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["family"]], blast_dir / "family_t2.fasta")
 
 
 # DIAMOND
@@ -95,15 +95,15 @@ for group, accessions in groups.items():
         continue
 
     db_path = blast_dir / "diamond" / group
-    create_diamond_db(blast_dir / f"{group}.fasta", db_path)
+    #create_diamond_db(blast_dir / f"{group}.fasta", db_path)
 
     run_diamond(
         query=query_path,
         db=db_path,
         out=hit_path,
         max_target_seqs=len(accessions),
-        coverage_thresh=config["coverage_threshold"],
-        identity_thresh=config["identity_thresholds"][level],
+        #coverage_thresh=config["coverage_threshold"],
+        #identity_thresh=config["identity_thresholds"][level],
         evalue=config.get("diamond", {}).get("evalue", 10),
         threads = 16
     )
@@ -154,12 +154,6 @@ df["mode"] = modes
 df = df.rename(columns={'qseqid': 'gene'})
 
 print(df.head())
-
-
-types = []
-for row in tqdm(df.itertuples(), total=len(df)):
-    types.append(find_hgt(row, config["pdt_cutoffs"]))
-df["type"] = types
 
 import re
 from Bio import SeqIO

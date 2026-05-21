@@ -49,7 +49,7 @@ def run_diamond(
         "-d", str(db),
         "-o", str(out),
         "--outfmt", "6",
-        "qseqid", "sseqid", "pident", "qlen", "qstart", "qend", "evalue", "bitscore",
+        "qseqid", "sseqid", "pident", "qcovhsp", "qlen", "qstart", "qend", "evalue", "bitscore",
         "--threads", str(threads),
     ]
     if max_target_seqs is not None:
@@ -89,7 +89,7 @@ def compute_pdt(
             tsv,
             sep="\t",
             header=None,
-            names=["qseqid", "sseqid", "pident", "qlen", "qstart", "qend", "evalue", "bitscore"],
+            names=["qseqid", "sseqid", "pident", "qcovhsp", "qlen", "qstart", "qend", "evalue", "bitscore"],
         )
     except pd.errors.EmptyDataError:
         pdt_df.to_csv(out, sep="\t", index=False)
@@ -100,9 +100,7 @@ def compute_pdt(
         return
 
     # Enforce Perl-like filtering explicitly
-    hits["qcov"] = (hits["qend"] - hits["qstart"]).abs() + 1
-    hits["qcov"] = 100.0 * hits["qcov"] / hits["qlen"].replace(0, pd.NA)
-    hits = hits[(hits["pident"] >= identity_thresh) & (hits["qcov"] >= coverage_thresh)]
+    hits = hits[(hits["pident"] >= identity_thresh) & (hits["qcovhsp"] >= coverage_thresh)]
 
     if hits.empty:
         pdt_df.to_csv(out, sep="\t", index=False)
