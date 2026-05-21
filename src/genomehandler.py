@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 import numpy as np
 import pandas as pd
-from typing import List
+from typing import List, Tuple
 from iohandler import header
 from tqdm import tqdm
 
@@ -14,8 +14,9 @@ def create_raw_multifasta(files: List[Path], out: Path):
                 for line in infile:
                     # Sanitization - Keeps only the protein accession in the header but also adds the file the protein came from
                     if line.startswith('>'):
-                        header = line[1:].split()[0]
-                        outfile.write(f'>{header}|{'.'.join(file.name.split('.')[:-1])}\n')
+                        protein_id = line[1:].split()[0]
+                        genome_id = ".".join(file.name.split(".")[:-1])
+                        outfile.write(f">{protein_id}|{genome_id}\n")
                     else:
                         outfile.write(line)
                 
@@ -26,20 +27,30 @@ def create_diamond_db(infile: Path, outfile: Path):
         "diamond",
         "makedb",
         "--in",
-        infile,
+        str(infile),
         "--db",
-        outfile
+        str(outfile)
     ])
 
-def run_diamond(query: Path, db: Path, out: Path, threads: int = 4, max_target_seqs = None, coverage_thresh = None, identity_thresh = None):
+def run_diamond(
+    query: Path,
+    db: Path,
+    out: Path,
+    threads: int = 4,
+    max_target_seqs: int | None = None,
+    coverage_thresh: float | None = None,
+    identity_thresh: float | None = None,
+    evalue: float | None = None,
+):
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "diamond", "blastp",
         "-q", str(query),
         "-d", str(db),
         "-o", str(out),
-        "--outfmt", "6", "qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qlen", "qstart", "qend", "sstart", "send", "evalue", "bitscore",
-        #"--threads", str(threads),
+        "--outfmt", "6",
+        "qseqid", "sseqid", "pident", "qlen", "qstart", "qend", "evalue", "bitscore",
+        "--threads", str(threads),
     ]
     if max_target_seqs is not None:
         cmd.extend(["--max-target-seqs", str(max_target_seqs)])
@@ -47,63 +58,138 @@ def run_diamond(query: Path, db: Path, out: Path, threads: int = 4, max_target_s
         cmd.extend(["--query-cover", str(coverage_thresh)])
     if identity_thresh is not None:
         cmd.extend(["--id", str(identity_thresh)])
+    if evalue is not None:
+        cmd.extend(["--evalue", str(evalue)])
+
     subprocess.run(cmd, check=True)
 
-def compute_pdt(tsv: Path, out: Path):
-    hits = pd.read_csv(tsv, sep='\t', header=None, usecols=[0,1], names=['qseqid', 'sseqid'])
-    # Extract genome accession from sseqid
-    hits['genome'] = hits['sseqid'].str.split('|').str[-1]
+def compute_pdt(
+    tsv: Path,
+    out: Path,
+    query_ids: List[str],
+    expected_genomes: List[str],
+    identity_thresh: float,
+    coverage_thresh: float,
+):
+    expected_genome_set = set(expected_genomes)
+    total_genomes = len(expected_genome_set)
 
-    # Unique set of all genomes
-    all_genomes = hits['genome'].unique()
-    total_genomes = len(all_genomes)
+    # Start from full query universe so zero-hit genes are preserved
+    pdt_df = pd.DataFrame({"qseqid": query_ids}).drop_duplicates()
+    pdt_df["genomes_with_gene"] = 0
+    pdt_df["total_genomes"] = total_genomes
+    pdt_df["PDT"] = 0.0
 
-    # For each qseqid, how many unique genomes does it appear in?
-    pdt_df = (
-        hits.groupby('qseqid')['genome']
-        .nunique()
-        .reset_index()
-        .rename(columns={'genome': 'genomes_with_gene'})
+    if not tsv.exists() or tsv.stat().st_size == 0:
+        pdt_df.to_csv(out, sep="\t", index=False)
+        return
+
+    try:
+        hits = pd.read_csv(
+            tsv,
+            sep="\t",
+            header=None,
+            names=["qseqid", "sseqid", "pident", "qlen", "qstart", "qend", "evalue", "bitscore"],
+        )
+    except pd.errors.EmptyDataError:
+        pdt_df.to_csv(out, sep="\t", index=False)
+        return
+
+    if hits.empty:
+        pdt_df.to_csv(out, sep="\t", index=False)
+        return
+
+    # Enforce Perl-like filtering explicitly
+    hits["qcov"] = (hits["qend"] - hits["qstart"]).abs() + 1
+    hits["qcov"] = 100.0 * hits["qcov"] / hits["qlen"].replace(0, pd.NA)
+    hits = hits[(hits["pident"] >= identity_thresh) & (hits["qcov"] >= coverage_thresh)]
+
+    if hits.empty:
+        pdt_df.to_csv(out, sep="\t", index=False)
+        return
+
+    hits["genome"] = hits["sseqid"].astype(str).str.rsplit("|", n=1).str[-1]
+    hits = hits[hits["genome"].isin(expected_genome_set)]
+
+    if hits.empty:
+        pdt_df.to_csv(out, sep="\t", index=False)
+        return
+
+    present = (
+        hits[["qseqid", "genome"]]
+        .drop_duplicates()
+        .groupby("qseqid", as_index=False)
+        .size()
+        .rename(columns={"size": "genomes_with_gene"})
     )
-    pdt_df['total_genomes'] = total_genomes
-    pdt_df['PDT'] = 100 * pdt_df['genomes_with_gene'] / total_genomes
 
-    # Optionally write to file
-    pdt_df.to_csv(out, sep='\t', index=False)
-    
-def find_hgt(row, pdt_thresh) -> str:
-    ALIEN = "HGT"
-    NATIVE = "NATIVE"
-    AMB = "AMBIGUOUS"
-    
-    if row.PDT_species_t2 <= pdt_thresh["species"]["low"]:
-        return ALIEN
-    elif row.PDT_species_t2 >= pdt_thresh["species"]["high"]:
-        if row.PDT_genus_t2 >= pdt_thresh["genus"]["high"]:
-            if row.PDT_family_t2 >= pdt_thresh["family"]["high"]:
-                return NATIVE
-            elif row.PDT_family_t2 <= pdt_thresh["family"]["low"]:
-                return ALIEN
-            else:
-                return AMB
-        elif row.PDT_genus_t2 < pdt_thresh["genus"]["high"] and row.PDT_genus_t2 > pdt_thresh["species"]["low"]:
-            if row.PDT_family_t1 <= pdt_thresh["family"]["low"]:
-                return ALIEN
-            elif row.PDT_family_t1 >= pdt_thresh["family"]["high"]:
-                return NATIVE
-            else:
-                return AMB
-        else:
-            return ALIEN
+    pdt_df = pdt_df.drop(columns=["genomes_with_gene"]).merge(present, on="qseqid", how="left")
+    pdt_df["genomes_with_gene"] = pdt_df["genomes_with_gene"].fillna(0).astype(int)
+
+    if total_genomes > 0:
+        pdt_df["PDT"] = 100.0 * pdt_df["genomes_with_gene"] / total_genomes
     else:
-        if row.PDT_family_t1 <= pdt_thresh["family"]["low"]:
-            return ALIEN
-        elif row.PDT_family_t1 >= pdt_thresh["family"]["high"]:
-            return NATIVE
-        else:
-            if row.PDT_family_t1 <= pdt_thresh["family"]["low"]:
-                return ALIEN
-            elif row.PDT_family_t1 >= pdt_thresh["family"]["high"]:
-                return NATIVE
+        pdt_df["PDT"] = 0.0
+
+    pdt_df.to_csv(out, sep="\t", index=False)
+
+
+def find_hgt(row, pdt_thresh) -> Tuple[str, str]:
+    """
+    Returns (type, mode):
+      type in {HGT, NATIVE, AMBIGUOUS}
+      mode in {Recent, Ancient, Native}
+    Mirrors Perl decision tree.
+    """
+    s_low, s_high = pdt_thresh["species"]["low"], pdt_thresh["species"]["high"]
+    g_low, g_high = pdt_thresh["genus"]["low"], pdt_thresh["genus"]["high"]
+    f_low, f_high = pdt_thresh["family"]["low"], pdt_thresh["family"]["high"]
+
+    # species fallback column if present (Perl FLAG_pdt behavior)
+    s_val = getattr(row, "PDT_species_for_rule", row.PDT_species_t2)
+
+    g_t1, f_t1 = row.PDT_genus_t1, row.PDT_family_t1
+    g_t2, f_t2 = row.PDT_genus_t2, row.PDT_family_t2
+
+    if s_val <= s_low:
+        return "HGT", "Recent"
+
+    elif s_val >= s_high:
+        if g_t2 >= g_high:
+            if f_t2 >= f_high:
+                return "NATIVE", "Native"
+            elif f_t2 <= f_low:
+                return "HGT", "Ancient"
             else:
-                return AMB
+                return "AMBIGUOUS", "Native"
+        elif g_t2 <= g_high:
+            if g_t2 >= g_low:
+                if f_t1 <= f_low:
+                    return "HGT", "Ancient"
+                elif f_t1 >= f_high:
+                    return "NATIVE", "Native"
+                else:
+                    return "AMBIGUOUS", "Native"
+            elif g_t2 < g_low:
+                return "HGT", "Ancient"
+            else:
+                return "AMBIGUOUS", "Native"
+        else:
+            return "AMBIGUOUS", "Native"
+
+    elif (s_val < s_high) and (s_val > s_low):
+        if g_t1 <= g_low:
+            return "HGT", "Ancient"
+        elif g_t1 >= g_high:
+            return "NATIVE", "Native"
+        elif (g_t1 > g_low) and (g_t1 < g_high):
+            if f_t1 <= f_low:
+                return "HGT", "Ancient"
+            elif f_t1 >= f_high:
+                return "NATIVE", "Native"
+            else:
+                return "AMBIGUOUS", "Native"
+        else:
+            return "AMBIGUOUS", "Native"
+
+    return "AMBIGUOUS", "Native"

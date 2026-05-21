@@ -93,7 +93,10 @@ def gen_taxa_db(target: pd.DataFrame, update_db = False) -> pd.DataFrame:
             cleaned.append(item)
         data[k] = cleaned
           
-    return pd.DataFrame.from_dict(data).dropna()
+    out = pd.DataFrame.from_dict(data)
+    # Keep rows needed for APP bucketing; do not drop purely for missing higher-rank labels
+    out = out.dropna(subset=["accession", "tax_id", "species_id", "genus_id", "family_id", "ftp_path"])
+    return out
 
 def graph(lineages: pd.DataFrame, outfile: Path):
     ncbi = NCBITaxa()

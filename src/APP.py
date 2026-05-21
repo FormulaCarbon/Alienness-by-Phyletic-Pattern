@@ -66,39 +66,57 @@ create_raw_multifasta([genomes_dir / (acc + ".faa") for acc in bucket_T2["family
 
 
 # DIAMOND
+# DIAMOND + PDT
 groups = {
     "species_t1": bucket_T1["species"],
     "genus_t1": bucket_T1["genus"],
     "family_t1": bucket_T1["family"],
     "species_t2": bucket_T2["species"],
     "genus_t2": bucket_T2["genus"],
-    "family_t2": bucket_T2["family"]
+    "family_t2": bucket_T2["family"],
 }
 
+query_path = blast_dir / "query.faa"
+query_ids = [rec.id for rec in SeqIO.parse(query_path, "fasta")]
 
 for group, accessions in groups.items():
+    level = group.split("_")[0]
+    hit_path = blast_dir / "outputs" / f"{group}_hits.tsv"
+    pdt_path = blast_dir / "outputs" / f"{group}_pdts.tsv"
+
+    if len(accessions) == 0:
+        # Preserve full gene list even when bucket is empty
+        pd.DataFrame({
+            "qseqid": query_ids,
+            "genomes_with_gene": 0,
+            "total_genomes": 0,
+            "PDT": 0.0,
+        }).to_csv(pdt_path, sep="\t", index=False)
+        continue
+
     db_path = blast_dir / "diamond" / group
     create_diamond_db(blast_dir / f"{group}.fasta", db_path)
-    query_path = blast_dir / "query.faa"
-    out_path = blast_dir / "outputs" / f"{group}_hits.tsv"
-    max_target = len(accessions)
-    
+
     run_diamond(
         query=query_path,
         db=db_path,
-        out=out_path,
-        #threads=4,
-        max_target_seqs=max_target,
+        out=hit_path,
+        max_target_seqs=len(accessions),
         coverage_thresh=config["coverage_threshold"],
-        identity_thresh=config["identity_thresholds"][group.split("_")[0]]
+        identity_thresh=config["identity_thresholds"][level],
+        evalue=config.get("diamond", {}).get("evalue", 10),
+        threads = 16
     )
 
-
-for group in list(groups):
-    print(f"Computing {group} PDTs")
-    hit_path = blast_dir / "outputs" / f"{group}_hits.tsv"
-    compute_pdt(hit_path, blast_dir / "outputs" / f"{group}_pdts.tsv")
-
+    compute_pdt(
+        tsv=hit_path,
+        out=pdt_path,
+        query_ids=query_ids,
+        expected_genomes=accessions,
+        identity_thresh=config["identity_thresholds"][level],
+        coverage_thresh=config["coverage_threshold"],
+    )
+    
 df_struct = []
 
 for group in list(groups):
@@ -115,6 +133,22 @@ for file, colname in df_struct[1:]:
     temp = temp.rename(columns={'PDT': colname})
     df = pd.merge(df, temp, on='qseqid', how='outer')
 df = df.fillna(0)
+
+# Perl FLAG_pdt fallback: if species_t2 bucket is empty, classify using species_t1
+if len(bucket_T2["species"]) == 0:
+    df["PDT_species_for_rule"] = df["PDT_species_t1"]
+else:
+    df["PDT_species_for_rule"] = df["PDT_species_t2"]
+
+types = []
+modes = []
+for row in tqdm(df.itertuples(), total=len(df)):
+    t, m = find_hgt(row, config["pdt_cutoffs"])
+    types.append(t)
+    modes.append(m)
+
+df["type"] = types
+df["mode"] = modes
 
 # Rename 'qseqid' to 'gene' if you wish
 df = df.rename(columns={'qseqid': 'gene'})
