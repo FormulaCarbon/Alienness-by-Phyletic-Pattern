@@ -23,14 +23,23 @@ def create_raw_multifasta(files: List[Path], out: Path):
 def create_diamond_db(infile: Path, outfile: Path):
     outfile.parent.mkdir(parents = True, exist_ok = True)
     header(f"Creating {outfile}.dmnd from {infile}")
-    subprocess.run([
+    """subprocess.run([
         "diamond",
         "makedb",
         "--in",
         str(infile),
         "--db",
         str(outfile)
-    ])
+    ])"""
+    subprocess.run([
+        "makeblastdb",
+        "-in", infile,
+        "-parse_seqids",
+        "-dbtype", "prot",
+        "-out", outfile
+        ],
+        shell = True
+    )
 
 def run_diamond(
     query: Path,
@@ -43,7 +52,7 @@ def run_diamond(
     evalue: float | None = None,
 ):
     out.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
+    """cmd = [
         "diamond", "blastp",
         "-q", str(query),
         "-d", str(db),
@@ -59,7 +68,17 @@ def run_diamond(
     if identity_thresh is not None:
         cmd.extend(["--id", str(identity_thresh)])
     if evalue is not None:
-        cmd.extend(["--evalue", str(evalue)])
+        cmd.extend(["--evalue", str(evalue)])"""
+        
+    cmd = [
+        "blastp",
+        "-num_threads", str(threads),
+        "-query", str(query),
+        "-db", str(db),
+        "-out", str(out),
+        "-outfmt", "6 qseqid sseqid pident qcovs length mismatch gapopen qstart qend sstart send evalue bitscore",
+        "-max_target_seqs", str(max_target_seqs)
+    ]
 
     subprocess.run(cmd, check=True)
 
@@ -89,7 +108,7 @@ def compute_pdt(
             tsv,
             sep="\t",
             header=None,
-            names=["qseqid", "sseqid", "pident", "qcovhsp", "qlen", "qstart", "qend", "evalue", "bitscore"],
+            names=["qseqid", "sseqid", "pident", "qcovs", "qlen", "qstart", "qend", "evalue", "bitscore"],
         )
     except pd.errors.EmptyDataError:
         pdt_df.to_csv(out, sep="\t", index=False)
@@ -100,7 +119,7 @@ def compute_pdt(
         return
 
     # Enforce Perl-like filtering explicitly
-    hits = hits[(hits["pident"] >= identity_thresh) & (hits["qcovhsp"] >= coverage_thresh)]
+    hits = hits[(hits["pident"] >= identity_thresh) & (hits["qcovs"] >= coverage_thresh)]
 
     if hits.empty:
         pdt_df.to_csv(out, sep="\t", index=False)

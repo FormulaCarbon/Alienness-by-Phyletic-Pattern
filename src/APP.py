@@ -95,7 +95,7 @@ for group, accessions in groups.items():
         continue
 
     db_path = blast_dir / "diamond" / group
-    #create_diamond_db(blast_dir / f"{group}.fasta", db_path)
+    create_diamond_db(blast_dir / f"{group}.fasta", db_path)
 
     run_diamond(
         query=query_path,

@@ -27,13 +27,5 @@ print(results.head())
 
 out = {}
 
-for row in results.itertuples():
-    if row.type == "HGT" and 0.0 not in [row.PDT_species_t1, row.PDT_species_t2, row.PDT_genus_t1, row.PDT_genus_t2, row.PDT_family_t1, row.PDT_family_t2]:
-        out[row.gene] = 0
-        for r in ranges:
-            if row.start >= r[0] and row.end <= r[1]:
-                out[row.gene] = 1
-            
-vals = list(out.values())
-
-print(sum(vals), len(vals), sum(vals)/len(vals))
+print(results["accession"].is_unique, results['tax_id'].is_unique)
+results.set_index('tax_id', verify_integrity=True)
