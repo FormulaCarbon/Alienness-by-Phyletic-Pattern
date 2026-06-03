@@ -27,6 +27,7 @@ def process_fasta(faa: Path | str) -> Path:
                     key = key.strip()
                     if "protein_id" in key:
                         acc_no = key.replace("protein_id", '')
+                        acc_no = acc_no.split("=")[1]
                         if acc_no:
                             new_header = f"{acc_no}:g{counter}"
                             outfile.write(f">{new_header}\n")
@@ -53,6 +54,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
     # --- Type 1 ---
     
     # Species
+    
     s_matches = lineages.loc[(
         (lineages["kingdom_id"].astype(str) == str(kingdom))
         & (lineages["phylum_id"].astype(str) == str(phylum))
@@ -150,11 +152,11 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
             1,
             working_dir,
         )
-        
+    
     # --- Type 2 ---
     
     # Species
-    s_matches = lineages.loc[(
+    s_matches = lineages.loc[
         (lineages["kingdom_id"].astype(str) == str(kingdom))
         & (lineages["phylum_id"].astype(str) == str(phylum))
         & (lineages["class_id"].astype(str) == str(clas))
@@ -162,8 +164,8 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         & (lineages["family_id"].astype(str) == str(family))
         & (lineages["genus_id"].astype(str) == str(genus))
         & (lineages["species_id"].astype(str) == str(species_under_consideration))
-        & (lineages["tax_id"].astype(str) != str(query["tax_id"])),
-    ), ["accession", "ftp_path"]]
+        & (lineages["strain"].astype(str) != str(query["strain"])),
+        ["accession", "ftp_path"]]
     
     species_accs = s_matches["accession"].dropna().drop_duplicates().tolist()
     species_files = [genomes_dir / f"{acc}.faa" for acc in species_accs]
@@ -182,7 +184,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         )
     
     # Genus
-    g_matches = lineages.loc[(
+    g_matches = lineages.loc[
         (lineages["kingdom_id"].astype(str) == str(kingdom))
         & (lineages["phylum_id"].astype(str) == str(phylum))
         & (lineages["class_id"].astype(str) == str(clas))
@@ -191,7 +193,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         & (lineages["genus_id"].astype(str) == str(genus_under_consideration))
         & (lineages["species_id"].astype(str) != str(species_under_consideration))
         & (lineages["tax_id"].astype(str) != str(query["tax_id"])),
-    ), ["accession", "ftp_path"]]
+        ["accession", "ftp_path"]]
     
     genus_accs = g_matches["accession"].dropna().drop_duplicates().tolist()
     genus_files = [genomes_dir / f"{acc}.faa" for acc in genus_accs]
@@ -264,7 +266,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         )
     return flag_pdt
     
-def download_links_blastp_all(query: dict, files: List[Path], size, level, t, working_dir: Path):
+def download_links_blastp_all_blast(query: dict, files: List[Path], size, level, t, working_dir: Path):
     fasta = working_dir / f"{level}_{t}_raw_database.fasta"
     map_file = working_dir / f"{level}_{t}_Accession_no_species.txt"
     print(f"creating multifasta {fasta}")
@@ -289,6 +291,42 @@ def download_links_blastp_all(query: dict, files: List[Path], size, level, t, wo
         "-outfmt", '6 qseqid sseqid pident qcovs length mismatch gapopen qstart qend sstart send evalue bitscore',
         "-max_target_seqs", str(size)
     ], check=True)
+    
+def download_links_blastp_all(query: dict, files: List[Path], size, level, t, working_dir: Path):
+    fasta = working_dir / f"{level}_{t}_raw_database.fasta"
+    map_file = working_dir / f"{level}_{t}_Accession_no_species.txt"
+    outfile = working_dir / f"{level}_{t}_db"
+    print(f"creating db {fasta}")
+    create_raw_multifasta(files, fasta, map_file)
+    
+    print("creating diamond db")
+    outfile.parent.mkdir(parents = True, exist_ok = True)
+    print(f"Creating {outfile}.dmnd from {fasta}")
+    subprocess.run([
+        "diamond",
+        "makedb",
+        "--in",
+        str(fasta),
+        "--db",
+        str(outfile)
+    ])
+    
+    threads = detect_cpu_cores()
+    print(f"running diamond with {threads} threads")
+    cmd = [
+        "diamond", "blastp",
+        "-q",  str(query["file_path"]),
+        "-d", str(outfile),
+        "-o", str(working_dir / f"{level}_{t}_output_blasthits"),
+        "--outfmt", "6",
+        "qseqid", "sseqid", "pident", "qcovhsp", "length", "mismatch", "qstart", "qend", "sstart", "send", "evalue", "bitscore",
+        "--threads", str(threads),
+        "--max-target-seqs", str(size)
+    ]
+    
+    print(cmd)
+    subprocess.run(cmd, check=True)
+
     
 def download_links_blastp_all_mmseqs2(query: dict, files: List[Path], size, level, t, working_dir: Path):
     fasta = working_dir / f"{level}_{t}_raw_database.fasta"
@@ -656,12 +694,12 @@ def alien_genes_finder(
             out[acc] = {"type": "Error"}
         with open(output11, 'w') as o11, open(output12, 'w') as o12:
             for a in sorted(out.keys()):
-                b = pdts_s1.get(a, {}).get("phyletic_distribution_threshold", "")
-                c = pdts_g1.get(a, {}).get("phyletic_distribution_threshold", "")
-                d = pdts_f1.get(a, {}).get("phyletic_distribution_threshold", "")
-                e = pdts_s2.get(a, {}).get("phyletic_distribution_threshold", "")
-                f = pdts_g2.get(a, {}).get("phyletic_distribution_threshold", "")
-                g = pdts_f2.get(a, {}).get("phyletic_distribution_threshold", "")
+                b = pdts_s1.get(a, {}).get("pdt", "")
+                c = pdts_g1.get(a, {}).get("pdt", "")
+                d = pdts_f1.get(a, {}).get("pdt", "")
+                e = pdts_s2.get(a, {}).get("pdt", "")
+                f = pdts_g2.get(a, {}).get("pdt", "")
+                g = pdts_f2.get(a, {}).get("pdt", "")
                 h = out[a].get("type", "")
                 t = out[a].get("mode", "")
                 o11.write(f"{a}\t{b}\t{c}\t{d}\t{e}\t{f}\t{g}\t{h}\t{t}\n")

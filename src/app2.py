@@ -46,6 +46,8 @@ unzip_fastas(working_dir)
 
 print("Processing FASTA")
 query["file_path"] = process_fasta(working_dir / "query.faa")
+query["file_path"] = working_dir / "query.faa.modified"
+
 
 # Header files for type 1 inclusion
 acc_s1 = working_dir / "species_1_Accession_no_species.txt"

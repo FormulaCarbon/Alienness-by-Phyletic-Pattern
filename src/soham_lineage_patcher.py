@@ -38,7 +38,7 @@ data = {
         "family" : lineage['family'].astype(str).tolist(),
         "genus" : lineage['genus'].astype(str).tolist(),
         "species": lineage['Species_name'].astype(str).tolist(),
-        "infraspecific_name": [pd.NA] * len(lineage['TAX_ID']),
+        "strain": [pd.NA] * len(lineage['TAX_ID']),
         "kingdom_id" : lineage['kingdom.1'].astype(int).tolist(),
         "phylum_id" : lineage['phylum.1'].astype(int).tolist(),
         "class_id" : lineage['class.1'].astype(int).tolist(),
@@ -48,7 +48,9 @@ data = {
         "species_id": lineage['SPECIES_ID'].astype(int).tolist(),
         "ftp_path": urls
     }
-taxa_db = pd.DataFrame.from_dict(data)
+df = pd.DataFrame.from_dict(data)
+lineages = pd.read_csv("H:/GENOME_DB/BACTERIAL_LINEAGES.txt", sep="\t")
+taxa_db = lineages[lineages["tax_id"].isin(df["tax_id"])]
 print(taxa_db.head())
 print()
 
