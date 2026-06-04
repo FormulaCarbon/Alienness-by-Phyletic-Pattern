@@ -66,7 +66,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
     ), ["accession", "ftp_path"]]
     
     species_accs = s_matches["accession"].dropna().drop_duplicates().tolist()
-    species_files = [genomes_dir / f"{acc}.faa" for acc in species_accs]
+    species_files = [genomes_dir / f"{acc}.faa" for acc in species_accs if (genomes_dir / f"{acc}.faa").exists()]
     
     if len(species_files) < 1:
         print("error, s t1 no files")
@@ -91,7 +91,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
     ), ["accession", "ftp_path"]]
     
     genus_accs = g_matches["accession"].dropna().drop_duplicates().tolist()
-    genus_files = [genomes_dir / f"{acc}.faa" for acc in genus_accs]
+    genus_files = [genomes_dir / f"{acc}.faa" for acc in genus_accs if (genomes_dir / f"{acc}.faa").exists()]
     
     if len(genus_files) < 1:
         print("error, g t1 no files")
@@ -116,7 +116,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
     ]
 
     family_accs = f_matches["accession"].dropna().drop_duplicates().tolist()
-    family_files = [genomes_dir / f"{acc}.faa" for acc in family_accs]
+    family_files = [genomes_dir / f"{acc}.faa" for acc in family_accs if (genomes_dir / f"{acc}.faa").exists()]
 
     if len(family_files) < 1:
         print("No family database found; hence going to order level (Type 1 inclusion)")
@@ -130,7 +130,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
             ["accession", "ftp_path"],
         ]
         order_accs = o_matches["accession"].dropna().drop_duplicates().tolist()
-        order_files = [genomes_dir / f"{acc}.faa" for acc in order_accs]
+        order_files = [genomes_dir / f"{acc}.faa" for acc in order_accs if (genomes_dir / f"{acc}.faa").exists()]
 
         if len(order_files) < 1:
             print("error, order t1 no files")
@@ -168,7 +168,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         ["accession", "ftp_path"]]
     
     species_accs = s_matches["accession"].dropna().drop_duplicates().tolist()
-    species_files = [genomes_dir / f"{acc}.faa" for acc in species_accs]
+    species_files = [genomes_dir / f"{acc}.faa" for acc in species_accs if (genomes_dir / f"{acc}.faa").exists()]
     
     if len(species_files) < 1:
         print("error, s t2 no files")
@@ -196,7 +196,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         ["accession", "ftp_path"]]
     
     genus_accs = g_matches["accession"].dropna().drop_duplicates().tolist()
-    genus_files = [genomes_dir / f"{acc}.faa" for acc in genus_accs]
+    genus_files = [genomes_dir / f"{acc}.faa" for acc in genus_accs if (genomes_dir / f"{acc}.faa").exists()]
     
     if len(genus_files) < 1:
         print("error, g t2 no files")
@@ -224,7 +224,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
     ]
 
     family_accs = f_matches["accession"].dropna().drop_duplicates().tolist()
-    family_files = [genomes_dir / f"{acc}.faa" for acc in family_accs]
+    family_files = [genomes_dir / f"{acc}.faa" for acc in family_accs if (genomes_dir / f"{acc}.faa").exists()]
 
     if len(family_files) < 1:
         print("No family database found; hence going to order level (Type 2 inclusion)")
@@ -242,7 +242,7 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
             ["accession", "ftp_path"],
         ]
         order_accs = o_matches["accession"].dropna().drop_duplicates().tolist()
-        order_files = [genomes_dir / f"{acc}.faa" for acc in order_accs]
+        order_files = [genomes_dir / f"{acc}.faa" for acc in order_accs if (genomes_dir / f"{acc}.faa").exists()]
 
         if len(order_files) < 1:
             print("error, order t2 no files")
@@ -266,11 +266,11 @@ def all_level_blast(acc: str, query: dict, lineages: pd.DataFrame, genomes_dir: 
         )
     return flag_pdt
     
-def download_links_blastp_all_blast(query: dict, files: List[Path], size, level, t, working_dir: Path):
+def download_links_blastp_all(query: dict, files: List[Path], size, level, t, working_dir: Path):
     fasta = working_dir / f"{level}_{t}_raw_database.fasta"
     map_file = working_dir / f"{level}_{t}_Accession_no_species.txt"
     print(f"creating multifasta {fasta}")
-    create_raw_multifasta(files, fasta, map_file)
+    #create_raw_multifasta(files, fasta, map_file)
     
     print("creating blast db")
     subprocess.run([
@@ -292,13 +292,13 @@ def download_links_blastp_all_blast(query: dict, files: List[Path], size, level,
         "-max_target_seqs", str(size)
     ], check=True)
     
-def download_links_blastp_all(query: dict, files: List[Path], size, level, t, working_dir: Path):
+def download_links_blastp_all_diamond(query: dict, files: List[Path], size, level, t, working_dir: Path):
     fasta = working_dir / f"{level}_{t}_raw_database.fasta"
     map_file = working_dir / f"{level}_{t}_Accession_no_species.txt"
     outfile = working_dir / f"{level}_{t}_db"
     print(f"creating db {fasta}")
     create_raw_multifasta(files, fasta, map_file)
-    
+    """
     print("creating diamond db")
     outfile.parent.mkdir(parents = True, exist_ok = True)
     print(f"Creating {outfile}.dmnd from {fasta}")
@@ -325,7 +325,7 @@ def download_links_blastp_all(query: dict, files: List[Path], size, level, t, wo
     ]
     
     print(cmd)
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True)"""
 
     
 def download_links_blastp_all_mmseqs2(query: dict, files: List[Path], size, level, t, working_dir: Path):
