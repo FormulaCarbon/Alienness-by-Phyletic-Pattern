@@ -38,6 +38,8 @@ try:
 except FileNotFoundError as e:
     if input("No Config File Found. Create Config? [y/n]: ") == "y":
         create_config(db_path)
+        with open(conf_path, 'r') as f:
+            conf = yaml.safe_load(f)
     else:
         raise e
 

@@ -19,7 +19,7 @@ with open(args.regions_data, 'r') as f:
     
 accs = [regions_data[name]['accession'] for name in regions_data]
 
-for acc in accs:
+for acc in accs[4:]:
     print(acc)
     cmd = [
         'py',

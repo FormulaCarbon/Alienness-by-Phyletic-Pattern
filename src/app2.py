@@ -13,6 +13,7 @@ parser.add_argument("accession", help = "RefSeq Accession (GCF_...) of query org
 parser.add_argument("database_path", help = "Path to Genome DB", type = str)
 parser.add_argument("--dir", help = "working directory", default = "/")
 parser.add_argument("--config", default="config.yaml")
+parser.add_argument("--sid", default=0, type=int)
 parser.add_argument("-m", "--mge", help="Enable Marker Gene Enrichment", action="store_true")
 
 args = parser.parse_args()
@@ -27,7 +28,7 @@ with open(db_path / "config.yaml", 'r') as db_conff:
     db_config = yaml.safe_load(db_conff)
     db_conff.close()
 
-lineage_path = db_path / db_config['lineage_path']
+lineage_path = db_path / db_config['min_lineage_path']
 genomes_dir = db_path / db_config['genomes_path']
 working_dir = Path(args.dir)
 
@@ -40,9 +41,9 @@ query_acc = args.accession
 query = lineages[lineages["accession"] == query_acc].iloc[0].to_dict()
 print(query)
 url = '_'.join(query["ftp_path"].split('_')[:-1]) + "_translated_cds.faa.gz"
-header(f"Downloading {url} to {working_dir / "query.faa.gz"}...")
-download_url(url, working_dir / "query.faa.gz")
-unzip_fastas(working_dir)
+#header(f"Downloading {url} to {working_dir / "query.faa.gz"}...")
+#download_url(url, working_dir / "query.faa.gz")
+#unzip_fastas(working_dir)
 
 print("Processing FASTA")
 query["file_path"] = process_fasta(working_dir / "query.faa")
@@ -63,7 +64,7 @@ species_id = query["species_id"]
 tax_id = query["tax_id"]
 
 
-flag_pdt = all_level_blast(query_acc, query, lineages, genomes_dir, working_dir)
+flag_pdt = all_level_blast(query_acc, query, lineages, genomes_dir, working_dir, args.sid)
 
 # Analysis
 
@@ -75,7 +76,7 @@ input_blasthit_family = working_dir / "family_1_output_blasthits"
 thresh_pident_species = config["identity_thresholds"]["species"]
 thresh_pident_genus = config["identity_thresholds"]["genus"]
 thresh_pident_family = config["identity_thresholds"]["family"]
-
+flag_pdt = 0
 if (flag_pdt == 1):
     print("processing hits for s1")
     output_blasthit_processor(

@@ -18,7 +18,7 @@ def download_dataset(accessions_file: Path, dehydrated_file: Path, db_path: Path
         accessions_file,
         "--dehydrated",
         "--filename",
-        dehydrated_file,
+        dehydrated_file,  
         "--include",
         "protein",
         ] + (["--api-key", api_key] if api_key is not None else []),

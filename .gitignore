@@ -14,3 +14,7 @@ venv
 .env
 datasets.exe
 output_18/
+blastp_test
+blastp_test2
+decision_tree_test
+GCF_000009665.1
